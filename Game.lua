@@ -18,10 +18,12 @@ function Game:new(w, h)
     instance.servingPlayer = 1
     instance.winningPlayer = 0
 
-    -- Initialize paddles and ball
+    -- Initialize paddles
     instance.paddleOne = Paddle:new(10, h / 2 - 10)
     instance.paddleTwo = Paddle:new(w - 15, h / 2 - 10)
-    instance.ball = Ball:new(w / 2 - 2, h / 2 - 2)
+
+    -- Initialize ball with game dimensions
+    instance.ball = Ball:new(w / 2 - 2, h / 2 - 2, w, h)
 
     -- Initialize scores
     instance.scoreOne = 0
@@ -32,93 +34,33 @@ function Game:new(w, h)
     instance.largeFont = love.graphics.newFont('font.ttf', 16)
     instance.scoreFont = love.graphics.newFont('font.ttf', 32)
 
-    -- Initialize sounds
+    -- Initialize sounds (only scoring sound needed here)
     instance.sounds = {
-        ['paddle_hit'] = love.audio.newSource('sounds/paddle_hit.wav', 'static'),
-        ['score'] = love.audio.newSource('sounds/score.wav', 'static'),
-        ['wall_hit'] = love.audio.newSource('sounds/wall_hit.wav', 'static')
+        ['score'] = love.audio.newSource('sounds/score.wav', 'static')
     }
 
     return instance
 end
 
 function Game:update(dt)
+    -- Handle paddle movement (always active regardless of state)
+    self:updatePaddles(dt)
+
     if self.state == 'serve' then
         -- Ball will move based on the serving player
         self.ball:serve(self.servingPlayer == 1 and 1 or -1)
     elseif self.state == 'play' then
-        -- Ball movement and collision logic
-        self.ball:update(dt)
+        -- Update ball and check scoring
+        local scorer = self.ball:update(dt, self.paddleOne, self.paddleTwo)
 
-        -- Paddle collisions
-        if self.ball:collides(self.paddleOne) then
-            self.ball.dx = -self.ball.dx * 1.03
-            self.ball.x = self.paddleOne.x + self.paddleOne.width
-
-            -- Keep velocity going in the same direction, but randomize it
-            if self.ball.dy < 0 then
-                self.ball.dy = -math.random(10, 150)
-            else
-                self.ball.dy = math.random(10, 150)
-            end
-
-            self.sounds['paddle_hit']:play()
-        end
-
-        if self.ball:collides(self.paddleTwo) then
-            self.ball.dx = -self.ball.dx * 1.03
-            self.ball.x = self.paddleTwo.x - self.ball.width
-
-            -- Keep velocity going in the same direction, but randomize it
-            if self.ball.dy < 0 then
-                self.ball.dy = -math.random(10, 150)
-            else
-                self.ball.dy = math.random(10, 150)
-            end
-
-            self.sounds['paddle_hit']:play()
-        end
-
-        -- Wall collisions
-        if self.ball.y <= 0 then
-            self.ball.y = 0
-            self.ball.dy = -self.ball.dy
-            self.sounds['wall_hit']:play()
-        elseif self.ball.y >= self.h - self.ball.height then
-            self.ball.y = self.h - self.ball.height
-            self.ball.dy = -self.ball.dy
-            self.sounds['wall_hit']:play()
-        end
-
-        -- Scoring
-        if self.ball.x < 0 then
-            self.scoreTwo = self.scoreTwo + 1
-            self.servingPlayer = 1
-            self.sounds['score']:play()
-
-            if self.scoreTwo >= WINNING_SCORE then
-                self.winningPlayer = 2
-                self.state = 'done'
-            else
-                self.state = 'serve'
-                self.ball:reset(self.w / 2 - 2, self.h / 2 - 2)
-            end
-        elseif self.ball.x > self.w then
-            self.scoreOne = self.scoreOne + 1
-            self.servingPlayer = 2
-            self.sounds['score']:play()
-
-            if self.scoreOne >= WINNING_SCORE then
-                self.winningPlayer = 1
-                self.state = 'done'
-            else
-                self.state = 'serve'
-                self.ball:reset(self.w / 2 - 2, self.h / 2 - 2)
-            end
+        -- Handle scoring
+        if scorer then
+            self:handleScoring(scorer)
         end
     end
+end
 
-    -- Paddle movement
+function Game:updatePaddles(dt)
     -- Player 1 (left)
     if love.keyboard.isDown('w') then
         self.paddleOne:move(dt, -1)
@@ -131,6 +73,30 @@ function Game:update(dt)
         self.paddleTwo:move(dt, -1)
     elseif love.keyboard.isDown('down') then
         self.paddleTwo:move(dt, 1)
+    end
+end
+
+function Game:handleScoring(scorer)
+    if scorer == 'left' then
+        self.scoreOne = self.scoreOne + 1
+        self.servingPlayer = 2
+    else -- scorer == 'right'
+        self.scoreTwo = self.scoreTwo + 1
+        self.servingPlayer = 1
+    end
+
+    self.sounds['score']:play()
+
+    -- Check for winner
+    if self.scoreOne >= WINNING_SCORE then
+        self.winningPlayer = 1
+        self.state = 'done'
+    elseif self.scoreTwo >= WINNING_SCORE then
+        self.winningPlayer = 2
+        self.state = 'done'
+    else
+        self.state = 'serve'
+        self.ball:reset(self.w / 2 - 2, self.h / 2 - 2)
     end
 end
 
